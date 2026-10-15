@@ -31,6 +31,28 @@ app.use(cors({
 }));
 app.use(express.json({ limit: "12mb" }));
 
+let dbPromise = null;
+async function connectDB(){
+  if (mongoose.connection.readyState === 1) return;
+  if (!dbPromise) {
+    dbPromise = mongoose.connect(MONGODB_URI).then(ensureSeed).catch(err => {
+      dbPromise = null;
+      throw err;
+    });
+  }
+  await dbPromise;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error("MongoDB connection failed:", err);
+    res.status(503).json({ message: "Database unavailable", error: err.message });
+  }
+});
+
 const userSchema = new mongoose.Schema({
   username: {type:String, required:true, unique:true, trim:true, minlength:3, maxlength:50},
   passwordHash: {type:String, required:true},
@@ -237,20 +259,6 @@ app.post("/api/admin/reset-users",auth,admin,async(req,res)=>{
 app.use((err,req,res,next)=>{
   console.error(err);
   res.status(500).json({message:"Internal server error"});
-});
-
-let dbPromise = null;
-async function connectDB(){
-  if (mongoose.connection.readyState === 1) return;
-  if (!dbPromise) {
-    dbPromise = mongoose.connect(MONGODB_URI).then(ensureSeed);
-  }
-  await dbPromise;
-}
-
-app.use(async (req,res,next)=>{
-  try { await connectDB(); next(); }
-  catch(err){ console.error("MongoDB connection failed:",err); res.status(503).json({message:"Database unavailable"}); }
 });
 
 if (!process.env.VERCEL) {
